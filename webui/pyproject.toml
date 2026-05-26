@@ -1,0 +1,15 @@
+[project]
+name = "yutto-webui"
+version = "1.0.0"
+description = "yutto Web UI backend"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "aiomysql>=0.2.0",
+  "yutto",
+]
+
+[tool.uv.sources]
+yutto = { path = "../" }
+

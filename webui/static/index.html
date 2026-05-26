@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>yutto · B站视频下载器</title>
+  <meta name="description" content="yutto 是一个可爱且任性的 B 站视频下载器 Web UI，支持单视频、批量下载，实时进度显示。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── CSS Reset & Variables ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-base:       #0b0d14;
+      --bg-surface:    #12151f;
+      --bg-elevated:   #1a1e2e;
+      --bg-card:       rgba(26, 30, 46, 0.7);
+      --bg-glass:      rgba(255,255,255,0.04);
+      --border:        rgba(255,255,255,0.08);
+      --border-active: rgba(99,102,241,0.5);
+
+      --accent:        #6366f1;
+      --accent-light:  #818cf8;
+      --accent-glow:   rgba(99,102,241,0.25);
+      --pink:          #ec4899;
+      --cyan:          #22d3ee;
+      --green:         #4ade80;
+      --yellow:        #fbbf24;
+      --red:           #f87171;
+
+      --text-primary:  #f1f5f9;
+      --text-secondary:#94a3b8;
+      --text-muted:    #475569;
+
+      --radius-sm:  6px;
+      --radius-md:  12px;
+      --radius-lg:  18px;
+      --radius-xl:  24px;
+
+      --shadow-glow: 0 0 40px rgba(99,102,241,0.15);
+      --shadow-card: 0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+
+    /* ── Scrollbars ──────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+    /* ── Background Gradient ─────────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% -10%, rgba(99,102,241,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 85% 110%, rgba(236,72,153,0.08) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(34,211,238,0.04) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    #app {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-rows: 60px 1fr;
+      grid-template-columns: 360px 1fr;
+      grid-template-areas:
+        "nav nav"
+        "sidebar main";
+      height: 100vh;
+      gap: 0;
+    }
+
+    /* ── Navbar ──────────────────────────────────────────────────────────── */
+    #navbar {
+      grid-area: nav;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 24px;
+      background: rgba(11,13,20,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 100;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      background: linear-gradient(135deg, var(--accent-light), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-logo .snowflake {
+      font-size: 22px;
+      -webkit-text-fill-color: initial;
+      animation: spin 8s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .nav-version {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .nav-spacer { flex: 1; }
+
+    .nav-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    .status-dot.offline {
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* ── Sidebar ──────────────────────────────────────────────────────────── */
+    #sidebar {
+      grid-area: sidebar;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 20px 16px;
+      background: rgba(12,15,22,0.6);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 0 4px;
+    }
+
+    /* ── Form Controls ───────────────────────────────────────────────────── */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .form-label .icon { font-size: 14px; }
+
+    .form-input, .form-select {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-input::placeholder { color: var(--text-muted); }
+
+    .form-input:focus, .form-select:focus {
+      border-color: var(--border-active);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .form-select option { background: var(--bg-elevated); }
+
+    /* URL input larger */
+    #url-input {
+      font-size: 13px;
+      padding: 11px 14px;
+      border-radius: var(--radius-md);
+    }
+
+    /* ── Toggle Switch ────────────────────────────────────────────────────── */
+    .toggles-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .toggle-item:hover { border-color: var(--border-active); background: rgba(99,102,241,0.05); }
+
+    .toggle-label { font-size: 12px; color: var(--text-secondary); }
+
+    .toggle-switch {
+      position: relative;
+      width: 30px;
+      height: 16px;
+    }
+
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      transition: background 0.2s;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 10px;
+      height: 10px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-switch input:checked + .toggle-track {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .toggle-switch input:checked + .toggle-track::after {
+      transform: translateX(14px);
+      background: white;
+    }
+
+    /* ── Download Button ──────────────────────────────────────────────────── */
+    #btn-download {
+      width: 100%;
+      padding: 12px 20px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border: none;
+      border-radius: var(--radius-md);
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 20px rgba(99,102,241,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    #btn-download:hover {
+      opacity: 0.9;
+      box-shadow: 0 6px 30px rgba(99,102,241,0.5);
+      transform: translateY(-1px);
+    }
+
+    #btn-download:active { transform: translateY(0); }
+
+    #btn-download:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-icon { font-size: 16px; }
+
+    /* ── Tab Switcher ─────────────────────────────────────────────────────── */
+    .tab-bar {
+      display: flex;
+      gap: 2px;
+      padding: 4px;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 7px 12px;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .tab-btn.active {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-card);
+    }
+
+    .tab-badge {
+      background: var(--accent);
+      color: white;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 99px;
+      min-width: 16px;
+      text-align: center;
+    }
+
+    /* ── Main Panel ───────────────────────────────────────────────────────── */
+    #main {
+      grid-area: main;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .tab-content { display: none; flex: 1; overflow: hidden; }
+    .tab-content.active { display: flex; flex-direction: column; }
+
+    /* ── Task List ────────────────────────────────────────────────────────── */
+    #task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      flex: 1;
+      padding-right: 4px;
+    }
+
+    .task-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex: 1;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .task-empty .empty-icon { font-size: 48px; opacity: 0.3; }
+
+    /* ── Task Card ────────────────────────────────────────────────────────── */
+    .task-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      backdrop-filter: blur(12px);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .task-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--cyan));
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .task-card.running::before { opacity: 1; }
+    .task-card.running { border-color: rgba(99,102,241,0.3); }
+
+    .task-card.done { border-color: rgba(74,222,128,0.2); }
+    .task-card.done::before { background: linear-gradient(90deg, var(--green), var(--cyan)); opacity: 0.6; }
+
+    .task-card.error { border-color: rgba(248,113,113,0.2); }
+    .task-card.error::before { background: var(--red); opacity: 0.6; }
+
+    .task-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .task-status-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .task-status-icon.pending  { background: rgba(251,191,36,0.15); color: var(--yellow); }
+    .task-status-icon.running  { background: rgba(99,102,241,0.15); color: var(--accent-light); }
+    .task-status-icon.done     { background: rgba(74,222,128,0.15); color: var(--green); }
+    .task-status-icon.error    { background: rgba(248,113,113,0.15); color: var(--red); }
+    .task-status-icon.cancelled { background: rgba(148,163,184,0.15); color: var(--text-muted); }
+
+    .task-info { flex: 1; min-width: 0; }
+
+    .task-url {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+
+    .task-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 10px;
+    }
+
+    .task-meta .badge {
+      padding: 1px 7px;
+      border-radius: 99px;
+      font-weight: 500;
+    }
+
+    .badge-running  { background: rgba(99,102,241,0.15); color: var(--accent-light); }
+    .badge-done     { background: rgba(74,222,128,0.15); color: var(--green); }
+    .badge-error    { background: rgba(248,113,113,0.15); color: var(--red); }
+    .badge-pending  { background: rgba(251,191,36,0.15); color: var(--yellow); }
+    .badge-cancelled { background: rgba(148,163,184,0.1); color: var(--text-muted); }
+
+    .task-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+
+    .icon-btn:hover { background: rgba(248,113,113,0.1); color: var(--red); border-color: rgba(248,113,113,0.3); }
+    .icon-btn.logs-btn:hover { background: rgba(99,102,241,0.1); color: var(--accent-light); border-color: var(--border-active); }
+
+    /* ── Progress Bar ─────────────────────────────────────────────────────── */
+    .progress-wrap {
+      margin-top: 12px;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .progress-bar-bg {
+      height: 4px;
+      background: var(--bg-elevated);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--cyan));
+      border-radius: 99px;
+      transition: width 0.4s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill.done {
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+    }
+
+    .progress-bar-fill.error {
+      background: var(--red);
+    }
+
+    .progress-bar-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shimmer 1.5s infinite;
+    }
+
+    .progress-bar-fill.done::after,
+    .progress-bar-fill.error::after { display: none; }
+
+    @keyframes shimmer {
+      to { left: 100%; }
+    }
+
+    /* ── Log Panel ────────────────────────────────────────────────────────── */
+    .log-panel {
+      display: none;
+      margin-top: 12px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .log-panel.open { display: block; }
+
+    .log-content {
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 10px 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .log-line { white-space: pre-wrap; word-break: break-all; }
+    .log-line.info    { color: #94a3b8; }
+    .log-line.success { color: var(--green); }
+    .log-line.warn    { color: var(--yellow); }
+    .log-line.err     { color: var(--red); }
+    .log-line.progress-line { color: var(--cyan); }
+
+    /* ── File Browser ─────────────────────────────────────────────────────── */
+    #file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+      flex: 1;
+      padding-right: 4px;
+    }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(8px);
+      transition: border-color 0.2s;
+    }
+
+    .file-item:hover { border-color: var(--border-active); }
+
+    .file-icon {
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .file-info { flex: 1; min-width: 0; }
+
+    .file-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-primary);
+    }
+
+    .file-path {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .file-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .file-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex: 1;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .file-empty .empty-icon { font-size: 48px; opacity: 0.3; }
+
+    .refresh-btn {
+      padding: 7px 14px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .refresh-btn:hover { border-color: var(--border-active); color: var(--text-primary); }
+
+    /* ── Separator / Divider ─────────────────────────────────────────────── */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    /* ── Toast ────────────────────────────────────────────────────────────── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 12px 18px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-size: 13px;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: blur(16px);
+      animation: toast-in 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toast.success { border-color: rgba(74,222,128,0.3); }
+    .toast.error   { border-color: rgba(248,113,113,0.3); }
+
+    @keyframes toast-in {
+      from { transform: translateX(40px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+
+    /* ── Spinner ──────────────────────────────────────────────────────────── */
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin-fast 0.7s linear infinite;
+    }
+
+    @keyframes spin-fast { to { transform: rotate(360deg); } }
+
+    /* ── Advanced Options Collapse ───────────────────────────────────────── */
+    .collapse-toggle {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 0;
+      transition: color 0.2s;
+    }
+
+    .collapse-toggle:hover { color: var(--text-secondary); }
+
+    .collapse-toggle .arrow {
+      transition: transform 0.2s;
+      font-size: 10px;
+    }
+
+    .collapse-toggle.open .arrow { transform: rotate(90deg); }
+
+    .collapse-body {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .collapse-body.open { display: flex; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Navbar ─────────────────────────────────────────────────────── -->
+  <nav id="navbar">
+    <div class="nav-logo">
+      <span class="snowflake">🧊</span>
+      yutto
+    </div>
+    <span class="nav-version" id="yutto-version">v2.2.0</span>
+    <div class="nav-spacer"></div>
+    <div class="nav-status" style="margin-right: 12px;">
+      <span class="status-dot" id="server-dot"></span>
+      <span id="server-status-text">后端连接中…</span>
+    </div>
+    <div id="bili-user-container" style="display: flex; align-items: center; gap: 8px;">
+      <!-- 未登录状态 -->
+      <button id="btn-bili-login" class="refresh-btn" style="border-radius: 99px; padding: 4px 12px; font-weight: 500; font-size: 12px; border-color: rgba(236,72,153,0.3); color: var(--pink);" onclick="openLoginModal()">
+        📺 B站登录
+      </button>
+      <!-- 已登录状态 -->
+      <div id="bili-profile" style="display: none; align-items: center; gap: 8px; background: var(--bg-glass); border: 1px solid var(--border); padding: 4px 12px; border-radius: 99px;">
+        <img id="bili-avatar" src="" style="width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border);" />
+        <span id="bili-name" style="font-size: 12px; color: var(--text-primary); font-weight: 500;">-</span>
+        <span id="bili-vip-badge" style="display: none; font-size: 9px; background: var(--pink); color: white; padding: 0px 4px; border-radius: 4px; font-weight: bold; line-height: 12px;">大会员</span>
+        <button onclick="logoutBili()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; padding: 0 2px; margin-left: 4px;" title="退出登录">退出</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Sidebar ────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+
+    <span class="section-label">🔗 视频链接</span>
+
+    <div class="form-group">
+      <input
+        id="url-input"
+        class="form-input"
+        type="text"
+        placeholder="粘贴 B 站视频 URL 或 BV/AV/EP 号…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
+
+    <span class="section-label">⚙️ 基础选项</span>
+
+    <div class="form-group">
+      <label class="form-label">
+        <span class="icon">🎬</span> 视频清晰度
+      </label>
+      <select id="sel-quality" class="form-select">
+        <option value="">自动（最高可用）</option>
+        <option value="127">8K 超高清</option>
+        <option value="120">4K 超清</option>
+        <option value="116">1080P 60帧</option>
+        <option value="112">1080P+（大会员）</option>
+        <option value="80" selected>1080P 高清</option>
+        <option value="74">720P 60帧</option>
+        <option value="64">720P 高清</option>
+        <option value="32">480P 标清</option>
+        <option value="16">360P 流畅</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">
+        <span class="icon">📂</span> 下载目录
+      </label>
+      <input id="inp-dir" class="form-input" type="text" placeholder="默认：/Users/yyyz/Desktop/心脏信号" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">
+        <span class="icon">🚀</span> 同时下载数
+      </label>
+      <select id="sel-concurrent" class="form-select" onchange="updateConcurrentTasks(this.value)">
+        <option value="1">1 个任务</option>
+        <option value="2">2 个任务</option>
+        <option value="3">3 个任务 (推荐)</option>
+        <option value="4">4 个任务</option>
+        <option value="5">5 个任务</option>
+        <option value="10">10 个任务 (容易被风控)</option>
+      </select>
+    </div>
+
+    <div class="toggles-grid">
+      <label class="toggle-item" title="批量下载整个系列">
+        <span class="toggle-label">批量下载</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="tog-batch" />
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <label class="toggle-item" title="仅下载音频流">
+        <span class="toggle-label">仅音频</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="tog-audio-only" />
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <label class="toggle-item" title="不生成弹幕文件">
+        <span class="toggle-label">跳过弹幕</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="tog-no-danmaku" />
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <label class="toggle-item" title="不生成字幕文件">
+        <span class="toggle-label">跳过字幕</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="tog-no-subtitle" />
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <label class="toggle-item" title="覆盖已存在的文件">
+        <span class="toggle-label">强制覆盖</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="tog-overwrite" />
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <label class="toggle-item" title="按分区/UP主/视频名自动归类">
+        <span class="toggle-label">智能分类</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="tog-auto-classify" />
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+    </div>
+
+    <!-- Advanced -->
+    <button class="collapse-toggle" id="adv-toggle">
+      <span class="arrow">▶</span> 高级选项
+    </button>
+    <div class="collapse-body" id="adv-body">
+      <div class="form-group">
+        <label class="form-label"><span class="icon">🌐</span> 代理</label>
+        <input id="inp-proxy" class="form-input" type="text" placeholder="auto / no / http://127.0.0.1:7890" />
+      </div>
+      <div class="form-group">
+        <label class="form-label"><span class="icon">🎞️</span> 选集范围</label>
+        <input id="inp-episodes" class="form-input" type="text" placeholder="如 1~5, 1~-1 (全部)" />
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <button id="btn-download">
+      <span class="btn-icon">⬇️</span>
+      开始下载
+    </button>
+
+  </aside>
+
+  <!-- ── Main ───────────────────────────────────────────────────────── -->
+  <main id="main">
+
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-tasks-btn" onclick="switchTab('tasks')">
+        📋 下载任务 <span class="tab-badge" id="tasks-badge">0</span>
+      </button>
+      <button class="tab-btn" id="tab-files-btn" onclick="switchTab('files')">
+        📁 已下载文件
+      </button>
+    </div>
+
+    <!-- Tasks Tab -->
+    <div class="tab-content active" id="tab-tasks">
+      <div id="task-list">
+        <div class="task-empty" id="task-empty">
+          <span class="empty-icon">📭</span>
+          <span>还没有下载任务，在左侧输入 URL 后点击开始下载</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Files Tab -->
+    <div class="tab-content" id="tab-files">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+        <button class="refresh-btn" onclick="loadFiles()">🔄 刷新</button>
+      </div>
+      <div id="file-list">
+        <div class="file-empty" id="file-empty">
+          <span class="empty-icon">📂</span>
+          <span>downloads/ 目录为空</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Bilibili Login Modal -->
+<div id="login-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center;">
+  <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; width: 320px; text-align: center; box-shadow: var(--shadow-card); position: relative;">
+    <button onclick="closeLoginModal()" style="position: absolute; top: 12px; right: 16px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px;">✕</button>
+    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--text-primary);">扫码登录哔哩哔哩</h3>
+    <div id="qrcode-container" style="background: white; padding: 12px; border-radius: var(--radius-md); width: 180px; height: 180px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; position: relative;">
+      <!-- 二维码图像 -->
+      <img id="login-qrcode" src="" style="width: 100%; height: 100%; display: none;" />
+      <div id="qrcode-loading" class="spinner" style="width: 24px; height: 24px; border-width: 3px; border-top-color: var(--accent);"></div>
+      <!-- 过期或失效的遮罩层 -->
+      <div id="qrcode-mask" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.8); border-radius: var(--radius-md); align-items: center; justify-content: center; flex-direction: column; gap: 8px;">
+        <span style="color: white; font-size: 12px;" id="qrcode-mask-text">二维码已过期</span>
+        <button onclick="getLoginQRCode()" class="refresh-btn" style="padding: 4px 8px; font-size: 11px;">重新获取</button>
+      </div>
+    </div>
+    <p id="login-status-hint" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">正在获取二维码...</p>
+    <p style="font-size: 10px; color: var(--text-muted);">使用哔哩哔哩客户端扫码登录以解锁高清下载权限</p>
+  </div>
+</div>
+
+<script>
+/* ── State ─────────────────────────────────────────────────────────────────── */
+const taskMap = {};   // task_id -> task card DOM & state
+let activeWs = {};    // task_id -> WebSocket
+
+/* ── Helpers ───────────────────────────────────────────────────────────────── */
+function showToast(msg, type = 'info', duration = 3500) {
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type] || '💬'}</span><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), duration);
+}
+
+function fmt_size(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function fmt_time(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString('zh-CN');
+}
+
+function file_icon(ext) {
+  const icons = {
+    '.mp4': '🎬', '.mkv': '🎬', '.mov': '🎬', '.avi': '🎬', '.webm': '🎬',
+    '.mp3': '🎵', '.m4a': '🎵', '.aac': '🎵', '.flac': '🎵',
+    '.ass': '💬', '.srt': '💬', '.xml': '💬',
+    '.jpg': '🖼️', '.jpeg': '🖼️', '.png': '🖼️', '.webp': '🖼️',
+    '.nfo': '📄',
+  };
+  return icons[ext] || '📄';
+}
+
+function classify_log(line) {
+  const lo = line.toLowerCase();
+  if (lo.includes('error') || lo.includes('错误') || lo.includes('失败')) return 'err';
+  if (lo.includes('warn') || lo.includes('警告')) return 'warn';
+  if (lo.includes('✓') || lo.includes('完成') || lo.includes('done') || lo.includes('成功')) return 'success';
+  if (lo.includes('mib') || lo.includes('%')) return 'progress-line';
+  return 'info';
+}
+
+/* ── Server Health Check ───────────────────────────────────────────────────── */
+async function checkServer() {
+  try {
+    const r = await fetch('/api/tasks', { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      document.getElementById('server-dot').classList.remove('offline');
+      document.getElementById('server-status-text').textContent = '服务正常';
+      return true;
+    }
+  } catch (e) {}
+  document.getElementById('server-dot').classList.add('offline');
+  document.getElementById('server-status-text').textContent = '无法连接后端';
+  return false;
+}
+
+/* ── Tab ───────────────────────────────────────────────────────────────────── */
+function switchTab(tab) {
+  ['tasks', 'files'].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`tab-${t}-btn`).classList.toggle('active', t === tab);
+  });
+  if (tab === 'files') loadFiles();
+}
+
+/* ── Task UI ───────────────────────────────────────────────────────────────── */
+const STATUS_ICON = {
+  pending:   '⏳',
+  running:   '⚡',
+  paused:    '⏸️',
+  done:      '✅',
+  error:     '❌',
+  cancelled: '🚫',
+};
+
+const STATUS_LABEL = {
+  pending:   '排队中',
+  running:   '下载中',
+  paused:    '已暂停',
+  done:      '已完成',
+  error:     '下载失败',
+  cancelled: '已取消',
+};
+
+function createTaskCard(taskId, url, status = 'pending') {
+  const card = document.createElement('div');
+  card.className = `task-card ${status}`;
+  card.id = `task-${taskId}`;
+  card.innerHTML = `
+    <div class="task-header">
+      <div class="task-status-icon ${status}" id="icon-${taskId}">${STATUS_ICON[status] || '⏳'}</div>
+      <div class="task-info">
+        <div class="task-url" title="${url}">${url}</div>
+        <div class="task-meta">
+          <span class="badge badge-${status}" id="badge-${taskId}">${STATUS_LABEL[status] || status}</span>
+          <span id="time-${taskId}">${fmt_time(Date.now()/1000)}</span>
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="icon-btn pause-btn" title="暂停任务" id="pause-${taskId}" onclick="togglePauseTask('${taskId}')" style="display: none;">⏸️</button>
+        <button class="icon-btn logs-btn" title="查看日志" onclick="toggleLog('${taskId}')">📜</button>
+        <button class="icon-btn cancel-btn" title="取消任务" id="cancel-${taskId}" onclick="cancelTask('${taskId}')">✕</button>
+      </div>
+    </div>
+    <div class="progress-wrap" id="progress-wrap-${taskId}">
+      <div class="progress-header">
+        <span id="progress-label-${taskId}">准备中…</span>
+        <span id="progress-pct-${taskId}">0%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="bar-${taskId}" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="log-panel" id="log-panel-${taskId}">
+      <div class="log-content" id="log-content-${taskId}"></div>
+    </div>
+  `;
+  return card;
+}
+
+function updateTaskStatus(taskId, status, progress) {
+  const card = document.getElementById(`task-${taskId}`);
+  if (!card) return;
+
+  // Update card class
+  card.className = `task-card ${status}`;
+
+  // Icon & badge
+  const iconEl = document.getElementById(`icon-${taskId}`);
+  const badgeEl = document.getElementById(`badge-${taskId}`);
+  if (iconEl) { iconEl.className = `task-status-icon ${status}`; iconEl.textContent = STATUS_ICON[status] || '?'; }
+  if (badgeEl) { badgeEl.className = `badge badge-${status}`; badgeEl.textContent = STATUS_LABEL[status] || status; }
+
+  // Progress bar
+  const bar = document.getElementById(`bar-${taskId}`);
+  const pctEl = document.getElementById(`progress-pct-${taskId}`);
+  const labelEl = document.getElementById(`progress-label-${taskId}`);
+  if (bar) {
+    bar.style.width = `${progress}%`;
+    bar.className = `progress-bar-fill ${status}`;
+  }
+  if (pctEl) pctEl.textContent = `${progress}%`;
+  if (labelEl) {
+    const msgs = { running: '下载中…', done: '下载完成！', error: '下载失败', cancelled: '已取消', pending: '等待执行…', paused: '已暂停' };
+    labelEl.textContent = msgs[status] || '';
+  }
+
+  // Handle buttons visibility
+  const pauseBtn = document.getElementById(`pause-${taskId}`);
+  const cancelBtn = document.getElementById(`cancel-${taskId}`);
+  
+  if (status === 'running') {
+    if (pauseBtn) {
+      pauseBtn.style.display = 'inline-flex';
+      pauseBtn.textContent = '⏸️';
+      pauseBtn.title = '暂停任务';
+    }
+    if (cancelBtn) {
+      cancelBtn.style.display = 'inline-flex';
+      cancelBtn.textContent = '✕';
+      cancelBtn.title = '取消任务';
+      cancelBtn.onclick = () => cancelTask(taskId);
+    }
+  } else if (status === 'paused') {
+    if (pauseBtn) {
+      pauseBtn.style.display = 'inline-flex';
+      pauseBtn.textContent = '▶️';
+      pauseBtn.title = '继续任务';
+    }
+    if (cancelBtn) {
+      cancelBtn.style.display = 'inline-flex';
+      cancelBtn.textContent = '✕';
+      cancelBtn.title = '取消任务';
+      cancelBtn.onclick = () => cancelTask(taskId);
+    }
+  } else if (status === 'pending') {
+    if (pauseBtn) pauseBtn.style.display = 'none';
+    if (cancelBtn) {
+      cancelBtn.style.display = 'inline-flex';
+      cancelBtn.textContent = '✕';
+      cancelBtn.title = '取消排队';
+      cancelBtn.onclick = () => cancelTask(taskId);
+    }
+  } else {
+    if (pauseBtn) pauseBtn.style.display = 'none';
+    if (['done', 'error', 'cancelled'].includes(status)) {
+      if (cancelBtn) {
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.textContent = '🗑️';
+        cancelBtn.title = '清除记录';
+        cancelBtn.onclick = () => deleteTask(taskId);
+      }
+    }
+  }
+}
+
+function appendLog(taskId, line) {
+  const container = document.getElementById(`log-content-${taskId}`);
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = `log-line ${classify_log(line)}`;
+  div.textContent = line;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function toggleLog(taskId) {
+  const panel = document.getElementById(`log-panel-${taskId}`);
+  if (!panel) return;
+  panel.classList.toggle('open');
+  
+  if (panel.classList.contains('open')) {
+    const container = document.getElementById(`log-content-${taskId}`);
+    if (container && container.children.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted); padding: 4px 0;">正在加载日志...</div>';
+      try {
+        const r = await fetch(`/api/tasks/${taskId}`);
+        const t = await r.json();
+        container.innerHTML = '';
+        if (t.cmd) {
+          appendLog(taskId, '$ ' + t.cmd);
+        }
+        if (t.logs && t.logs.length > 0) {
+          t.logs.forEach(line => appendLog(taskId, line));
+        } else {
+          container.innerHTML = '<div style="color:var(--text-muted); padding: 4px 0;">暂无日志</div>';
+        }
+      } catch (e) {
+        container.innerHTML = '<div style="color:var(--red); padding: 4px 0;">加载日志失败</div>';
+      }
+    }
+  }
+}
+
+async function loadTasks() {
+  try {
+    const r = await fetch('/api/tasks');
+    const tasks = await r.json();
+    const list = document.getElementById('task-list');
+    
+    if (tasks.length === 0) {
+      list.innerHTML = `
+        <div class="task-empty" id="task-empty">
+          <span class="empty-icon">📭</span>
+          <span>还没有下载任务，在左侧输入 URL 后点击开始下载</span>
+        </div>`;
+      updateTaskBadge();
+      return;
+    }
+    
+    document.getElementById('task-empty')?.remove();
+    list.innerHTML = '';
+    
+    for (const t of tasks) {
+      const card = createTaskCard(t.id, t.url, t.status);
+      list.appendChild(card);
+      
+      const timeEl = document.getElementById(`time-${t.id}`);
+      if (timeEl && t.created_at) {
+        timeEl.textContent = fmt_time(t.created_at);
+      }
+      
+      updateTaskStatus(t.id, t.status, Math.round(t.progress || 0));
+      taskMap[t.id] = true;
+      
+      if (['pending', 'running', 'paused'].includes(t.status)) {
+        startWebSocket(t.id);
+      }
+    }
+    updateTaskBadge();
+  } catch (e) {
+    showToast('无法获取任务列表', 'error');
+  }
+}
+
+function updateTaskBadge() {
+  const count = Object.keys(taskMap).length;
+  document.getElementById('tasks-badge').textContent = count;
+}
+
+/* ── WebSocket Download ────────────────────────────────────────────────────── */
+function startWebSocket(taskId) {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${protocol}//${location.host}/ws/${taskId}`);
+  activeWs[taskId] = ws;
+
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+
+    switch (msg.type) {
+      case 'log':
+        appendLog(taskId, msg.line);
+        if (msg.progress != null) {
+          updateTaskStatus(taskId, 'running', Math.round(msg.progress));
+        }
+        break;
+      case 'status':
+        updateTaskStatus(taskId, msg.status, Math.round(msg.progress || 0));
+        if (msg.status === 'done') {
+          showToast('下载完成！', 'success');
+          loadFiles();  // refresh file list
+        } else if (msg.status === 'error') {
+          showToast(`下载失败（返回码 ${msg.return_code}）`, 'error');
+        }
+        break;
+      case 'error':
+        showToast(msg.message, 'error');
+        updateTaskStatus(taskId, 'error', 0);
+        break;
+      case 'cmd':
+        appendLog(taskId, '$ ' + msg.cmd);
+        break;
+    }
+  };
+
+  ws.onerror = () => { updateTaskStatus(taskId, 'error', 0); };
+  ws.onclose = () => { delete activeWs[taskId]; };
+}
+
+/* ── Cancel Task ───────────────────────────────────────────────────────────── */
+async function cancelTask(taskId) {
+  try {
+    const r = await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
+    const data = await r.json();
+    showToast(data.message || '已发送取消请求', 'info');
+    updateTaskStatus(taskId, 'cancelled', 0);
+  } catch (e) {
+    showToast('取消失败', 'error');
+  }
+}
+
+/* ── Pause / Resume Task ────────────────────────────────────────────────────── */
+async function togglePauseTask(taskId) {
+  const pauseBtn = document.getElementById(`pause-${taskId}`);
+  const isPause = pauseBtn && pauseBtn.textContent === '⏸️';
+  const action = isPause ? 'pause' : 'resume';
+  const url = `/api/tasks/${taskId}/${action}`;
+  
+  try {
+    const r = await fetch(url, { method: 'POST' });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(data.message || (isPause ? '已暂停任务' : '已继续任务'), 'success');
+      const curBar = document.getElementById(`bar-${taskId}`);
+      const curProgress = curBar ? parseInt(curBar.style.width) || 0 : 0;
+      updateTaskStatus(taskId, isPause ? 'paused' : 'running', curProgress);
+    } else {
+      showToast(data.error || '操作失败', 'error');
+    }
+  } catch (e) {
+    showToast('网络错误', 'error');
+  }
+}
+
+/* ── Delete Task Record ─────────────────────────────────────────────────────── */
+async function deleteTask(taskId) {
+  // 弹出确认对话框
+  const modal = document.getElementById('delete-confirm-modal');
+  if (modal) {
+    modal.dataset.taskId = taskId;
+    modal.style.display = 'flex';
+    return;
+  }
+  // 降级：直接只删除任务记录
+  await _doDeleteTask(taskId, false);
+}
+
+async function _doDeleteTask(taskId, deleteFiles) {
+  try {
+    const url = deleteFiles
+      ? `/api/tasks/${taskId}?delete_files=true`
+      : `/api/tasks/${taskId}`;
+    const r = await fetch(url, { method: 'DELETE' });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(data.message || '已清除任务记录', 'success');
+      delete taskMap[taskId];
+      const card = document.getElementById(`task-${taskId}`);
+      if (card) card.remove();
+      
+      updateTaskBadge();
+      
+      const list = document.getElementById('task-list');
+      if (list && list.children.length === 0) {
+        list.innerHTML = `
+          <div class="task-empty" id="task-empty">
+            <span class="empty-icon">📭</span>
+            <span>还没有下载任务，在左侧输入 URL 后点击开始下载</span>
+          </div>`;
+      }
+    } else {
+      showToast(data.error || '清除失败', 'error');
+    }
+  } catch (e) {
+    showToast('网络错误', 'error');
+  }
+}
+
+/* ── Submit Download ───────────────────────────────────────────────────────── */
+document.getElementById('btn-download').addEventListener('click', async () => {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { showToast('请先输入视频链接', 'error'); return; }
+
+  const params = {
+    url,
+    video_quality: document.getElementById('sel-quality').value || null,
+    dir: document.getElementById('inp-dir').value.trim() || null,
+    batch: document.getElementById('tog-batch').checked,
+    audio_only: document.getElementById('tog-audio-only').checked,
+    no_danmaku: document.getElementById('tog-no-danmaku').checked,
+    no_subtitle: document.getElementById('tog-no-subtitle').checked,
+    overwrite: document.getElementById('tog-overwrite').checked,
+    auto_classify: document.getElementById('tog-auto-classify').checked,
+    proxy: document.getElementById('inp-proxy').value.trim() || null,
+  };
+
+  const btn = document.getElementById('btn-download');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> 提交中…';
+
+  try {
+    const r = await fetch('/api/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await r.json();
+
+    if (!r.ok) { showToast(data.error || '提交失败', 'error'); return; }
+
+    const taskId = data.task_id;
+    taskMap[taskId] = true;
+
+    // Remove empty placeholder
+    document.getElementById('task-empty')?.remove();
+
+    // Create card
+    const card = createTaskCard(taskId, url, 'pending');
+    const list = document.getElementById('task-list');
+    list.insertBefore(card, list.firstChild);
+
+    updateTaskBadge();
+    switchTab('tasks');
+
+    // Start WebSocket
+    startWebSocket(taskId);
+
+    showToast('任务已提交！', 'success');
+    document.getElementById('url-input').value = '';
+  } catch (e) {
+    showToast('网络错误，请检查后端是否运行', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-icon">⬇️</span> 开始下载';
+  }
+});
+
+/* ── File Browser ──────────────────────────────────────────────────────────── */
+async function loadFiles() {
+  try {
+    const r = await fetch('/api/files');
+    const files = await r.json();
+    const list = document.getElementById('file-list');
+
+    if (files.length === 0) {
+      list.innerHTML = `
+        <div class="file-empty" id="file-empty">
+          <span class="empty-icon">📂</span>
+          <span>downloads/ 目录为空</span>
+        </div>`;
+      return;
+    }
+    list.innerHTML = files.map(f => `
+      <div class="file-item">
+        <span class="file-icon">${file_icon(f.ext)}</span>
+        <div class="file-info">
+          <div class="file-name">${f.name}</div>
+          <div class="file-path">${f.path}</div>
+        </div>
+        <div class="file-meta" style="margin-right: 8px;">
+          <div>${fmt_size(f.size)}</div>
+          <div>${new Date(f.modified * 1000).toLocaleDateString('zh-CN')}</div>
+        </div>
+        <button class="icon-btn" title="在文件夹中显示" onclick="openFileLocation('${encodeURIComponent(f.path)}')" ${window.isDocker ? 'style="display:none;"' : ''}>
+          📁
+        </button>
+      </div>
+    `).join('');
+  } catch (e) {
+    showToast('无法获取文件列表', 'error');
+  }
+}
+
+async function openFileLocation(path) {
+  try {
+    const r = await fetch('/api/files/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: decodeURIComponent(path) })
+    });
+    const data = await r.json();
+    if (!data.success) {
+      showToast(data.error || '无法打开文件夹', 'error');
+    }
+  } catch (e) {
+    showToast('网络请求失败', 'error');
+  }
+}
+
+/* ── Advanced Options Toggle ─────────────────────────────────────────────── */
+document.getElementById('adv-toggle').addEventListener('click', function() {
+  this.classList.toggle('open');
+  document.getElementById('adv-body').classList.toggle('open');
+});
+
+/* ── Enter key to submit ───────────────────────────────────────────────────── */
+document.getElementById('url-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('btn-download').click();
+});
+
+/* ── Bilibili Auth Logic ────────────────────────────────────────────────── */
+let qrPollInterval = null;
+
+async function checkBiliAuth() {
+  try {
+    const r = await fetch('/api/auth/status');
+    const data = await r.json();
+    const btn = document.getElementById('btn-bili-login');
+    const profile = document.getElementById('bili-profile');
+    
+    if (data.is_login) {
+      btn.style.display = 'none';
+      profile.style.display = 'flex';
+      document.getElementById('bili-avatar').src = data.face || '';
+      document.getElementById('bili-name').textContent = data.uname || '已登录';
+      document.getElementById('bili-vip-badge').style.display = data.vip ? 'inline-block' : 'none';
+    } else {
+      btn.style.display = 'block';
+      profile.style.display = 'none';
+    }
+  } catch (e) {
+    console.error('Check bili auth error:', e);
+  }
+}
+
+function openLoginModal() {
+  document.getElementById('login-modal').style.display = 'flex';
+  getLoginQRCode();
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    const sel = document.getElementById('sel-concurrent');
+    if (sel && data.max_concurrent_tasks) {
+      sel.value = data.max_concurrent_tasks;
+    }
+    window.isDocker = !!data.is_docker;
+  } catch (e) {
+    console.error('Failed to load config:', e);
+  }
+}
+
+async function updateConcurrentTasks(val) {
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_concurrent_tasks: val })
+    });
+    if (res.ok) {
+      showToast(`已将同时下载数限制调整为 ${val}`, 'success');
+    } else {
+      showToast('更新失败', 'error');
+    }
+  } catch (e) {
+    showToast('更新配置异常', 'error');
+  }
+}
+
+function closeLoginModal() {
+  document.getElementById('login-modal').style.display = 'none';
+  if (qrPollInterval) {
+    clearInterval(qrPollInterval);
+    qrPollInterval = null;
+  }
+}
+
+async function getLoginQRCode() {
+  const img = document.getElementById('login-qrcode');
+  const loading = document.getElementById('qrcode-loading');
+  const mask = document.getElementById('qrcode-mask');
+  const hint = document.getElementById('login-status-hint');
+  
+  img.style.display = 'none';
+  loading.style.display = 'block';
+  mask.style.display = 'none';
+  hint.textContent = '正在获取二维码...';
+  
+  if (qrPollInterval) {
+    clearInterval(qrPollInterval);
+    qrPollInterval = null;
+  }
+
+  try {
+    const r = await fetch('/api/auth/qrcode');
+    const data = await r.json();
+    if (data.error) {
+      hint.textContent = '获取二维码失败：' + data.error;
+      loading.style.display = 'none';
+      return;
+    }
+    
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.url)}`;
+    img.onload = () => {
+      loading.style.display = 'none';
+      img.style.display = 'block';
+      hint.textContent = '请使用哔哩哔哩 APP 扫码';
+      startQrPolling(data.qrcode_key);
+    };
+  } catch (e) {
+    hint.textContent = '网络错误';
+    loading.style.display = 'none';
+  }
+}
+
+function startQrPolling(qrcodeKey) {
+  const hint = document.getElementById('login-status-hint');
+  const mask = document.getElementById('qrcode-mask');
+  
+  qrPollInterval = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/auth/poll?qrcode_key=${qrcodeKey}`);
+      const data = await r.json();
+      if (data.status === 'confirmed') {
+        clearInterval(qrPollInterval);
+        qrPollInterval = null;
+        hint.textContent = '登录成功！';
+        showToast('B站登录成功！', 'success');
+        setTimeout(() => {
+          closeLoginModal();
+          checkBiliAuth();
+        }, 1000);
+      } else if (data.status === 'scanned') {
+        hint.textContent = '扫码成功，请在手机上确认';
+      } else if (data.status === 'expired') {
+        clearInterval(qrPollInterval);
+        qrPollInterval = null;
+        hint.textContent = '二维码已过期';
+        mask.style.display = 'flex';
+        document.getElementById('qrcode-mask-text').textContent = '二维码已过期';
+      } else if (data.status === 'error') {
+        clearInterval(qrPollInterval);
+        qrPollInterval = null;
+        hint.textContent = '登录失败';
+        showToast(data.message || '登录出错', 'error');
+      }
+    } catch (e) {
+      console.error('Polling error:', e);
+    }
+  }, 2000);
+}
+
+async function logoutBili() {
+  if (!confirm('确定要退出 B站 账号绑定吗？')) return;
+  try {
+    const r = await fetch('/api/auth/logout', { method: 'POST' });
+    const data = await r.json();
+    if (data.success) {
+      showToast('已退出登录', 'success');
+      checkBiliAuth();
+    } else {
+      showToast('退出失败', 'error');
+    }
+  } catch (e) {
+    showToast('网络错误', 'error');
+  }
+}
+
+/* ── Init ──────────────────────────────────────────────────────────────────── */
+(async function init() {
+  await checkServer();
+  await loadTasks();
+  await checkBiliAuth();
+  await loadConfig();
+  setInterval(checkServer, 10000);
+})();
+</script>
+
+<!-- ── Delete Confirm Modal ─────────────────────────────────────────── -->
+<div id="delete-confirm-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,0.6); backdrop-filter:blur(6px);
+     align-items:center; justify-content:center;">
+  <div style="background:#1a1e2e; border:1px solid rgba(255,255,255,0.1); border-radius:16px;
+              padding:28px 32px; width:340px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div style="font-size:1.1rem; font-weight:600; color:#f1f5f9; margin-bottom:8px;">🗑️ 删除任务</div>
+    <div style="font-size:0.875rem; color:#94a3b8; margin-bottom:24px; line-height:1.6;">
+      请选择删除方式：<br>
+      <span style="color:#fbbf24;">⚠️ 同时删除文件不可恢复</span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button id="del-record-only" style="padding:10px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.12);
+              background:rgba(255,255,255,0.06); color:#f1f5f9; cursor:pointer; font-size:0.875rem;
+              text-align:left; transition:background .15s;"
+        onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+        onmouseout="this.style.background='rgba(255,255,255,0.06)'">
+        📋 仅删除任务记录（保留下载文件）
+      </button>
+      <button id="del-with-files" style="padding:10px 16px; border-radius:10px; border:1px solid rgba(248,113,113,0.3);
+              background:rgba(248,113,113,0.08); color:#f87171; cursor:pointer; font-size:0.875rem;
+              text-align:left; transition:background .15s;"
+        onmouseover="this.style.background='rgba(248,113,113,0.16)'"
+        onmouseout="this.style.background='rgba(248,113,113,0.08)'">
+        🗑️ 删除任务记录 + 下载的文件
+      </button>
+      <button id="del-cancel" style="padding:8px 16px; border-radius:10px; border:none;
+              background:transparent; color:#64748b; cursor:pointer; font-size:0.875rem;
+              transition:color .15s;"
+        onmouseover="this.style.color='#94a3b8'"
+        onmouseout="this.style.color='#64748b'">
+        取消
+      </button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const modal = document.getElementById('delete-confirm-modal');
+  document.getElementById('del-record-only').addEventListener('click', async () => {
+    modal.style.display = 'none';
+    await _doDeleteTask(modal.dataset.taskId, false);
+  });
+  document.getElementById('del-with-files').addEventListener('click', async () => {
+    modal.style.display = 'none';
+    await _doDeleteTask(modal.dataset.taskId, true);
+  });
+  document.getElementById('del-cancel').addEventListener('click', () => {
+    modal.style.display = 'none';
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.style.display = 'none';
+  });
+})();
+</script>
+</body>
+
+</html>

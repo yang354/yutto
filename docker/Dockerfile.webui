@@ -1,0 +1,38 @@
+# Dockerfile.webui
+FROM python:3.10-slim
+
+# 安装系统依赖：ffmpeg + Rust 编译工具链（biliass 需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Rust（biliass 是 Rust 扩展，编译时必须有 Rust）
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# 设置时区为上海
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /app
+
+# 安装 uv 工具
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# 拷贝整个仓库（包括 yutto 本地模块和 webui 模块）
+COPY . /app
+
+# 同步 webui 依赖（此步骤会编译 biliass Rust 扩展）
+RUN uv sync --project webui
+
+# 暴露端口
+EXPOSE 8765
+
+# 容器内运行目录切换到 webui
+WORKDIR /app/webui
+
+# 启动服务
+ENTRYPOINT ["uv", "run", "python", "server.py"]
+

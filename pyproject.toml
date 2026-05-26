@@ -4,7 +4,7 @@ version = "2.2.0"
 description = "🧊 一个可爱且任性的 B 站视频下载器"
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "Nyakku Shigure", email = "sigure.qaq@gmail.com" }]
+authors = [{ name = "杨354", email = "2360071404@qq.com" }]
 keywords = ["python", "bilibili", "video", "downloader", "danmaku"]
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
@@ -35,10 +35,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yutto-dev/yutto"
-Documentation = "https://github.com/yutto-dev/yutto"
-Repository = "https://github.com/yutto-dev/yutto"
-Issues = "https://github.com/yutto-dev/yutto/issues"
+Homepage = "https://github.com/yang354/yutto"
+Documentation = "https://github.com/yang354/yutto"
+Repository = "https://github.com/yang354/yutto"
+Issues = "https://github.com/yang354/yutto/issues"
 
 [project.scripts]
 yutto = "yutto.__main__:main"
